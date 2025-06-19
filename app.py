@@ -1,27 +1,36 @@
 from flask import Flask, request, jsonify
-from sentence_transformers import SentenceTransformer
-from sklearn.cluster import KMeans
+from transformers import pipeline
 
-model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
 app = Flask(__name__)
+
+# Создаём zero-shot классификатор
+classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+
+# Пример универсальных категорий (можно менять/дополнять)
+CANDIDATE_LABELS = [
+    "еда", "одежда", "техника", "гигиена", "мебель", "инструменты", "бытовые товары",
+    "электроника", "канцелярия", "спорт", "игрушки", "косметика", "автомобильные товары"
+]
 
 @app.route('/classify', methods=['POST'])
 def classify():
     data = request.json
-    items = data.get('items', [])
-    n_clusters = data.get('clusters', 4)
+    items = data.get("items")
+    labels = data.get("labels", CANDIDATE_LABELS)  # Можно передавать кастомные категории
+    if not items or len(items) == 0:
+        return jsonify({"error": "No items provided"}), 400
 
-    if len(items) < 2:
-        return jsonify({'error': 'Недостаточно предметов (min 2)'}), 400
+    # Словарь с категориями и списком предметов
+    result = {label: [] for label in labels}
 
-    embeddings = model.encode(items)
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0)
-    labels = kmeans.fit_predict(embeddings)
+    for item in items:
+        # Классифицируем каждый предмет
+        out = classifier(item, candidate_labels=labels)
+        top_label = out["labels"][0]
+        result[top_label].append(item)
 
-    result = {}
-    for idx, label in enumerate(labels):
-        key = f"cluster_{label + 1}"
-        result.setdefault(key, []).append(items[idx])
+    # Уберём пустые категории
+    result = {k: v for k, v in result.items() if v}
 
     return jsonify(result)
 
