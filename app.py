@@ -16,20 +16,21 @@ CANDIDATE_LABELS = [
 def classify():
     data = request.json
     items = data.get("items")
-    labels = data.get("labels", CANDIDATE_LABELS)  # Можно передавать кастомные категории
+    labels = data.get("labels", CANDIDATE_LABELS)
     if not items or len(items) == 0:
         return jsonify({"error": "No items provided"}), 400
 
-    # Словарь с категориями и списком предметов
-    result = {label: [] for label in labels}
+    # Классифицируем все предметы сразу (батчинг)
+    out = classifier(items, candidate_labels=labels)
 
-    for item in items:
-        # Классифицируем каждый предмет
-        out = classifier(item, candidate_labels=labels)
-        top_label = out["labels"][0]
+    # Формируем результат
+    result = {label: [] for label in labels}
+    for item_result in out:
+        top_label = item_result["labels"][0]
+        item = item_result["sequence"]
         result[top_label].append(item)
 
-    # Уберём пустые категории
+    # Убираем пустые категории
     result = {k: v for k, v in result.items() if v}
 
     return jsonify(result)
